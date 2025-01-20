@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS WalletTransaction
     account          text                        NOT NULL,
     amount           decimal(10, 2)              NOT NULL,
     currency         text                        NOT NULL,
-    type             text                        NOT NULL,
+    transactionType  text                        NOT NULL,
     transferAmount   decimal(10, 2),
     transferCurrency text,
     toAccount        text,
