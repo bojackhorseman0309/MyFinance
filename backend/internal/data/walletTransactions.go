@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -36,6 +37,7 @@ func (m WalletTransactionModel) Insert(walletTransaction *WalletTransaction) err
 		                               receiveamount, receivecurrency, description,
 		                               duedate, walletid)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT DO NOTHING 
 		RETURNING id`
 
 	args := []any{
@@ -60,4 +62,50 @@ func (m WalletTransactionModel) Insert(walletTransaction *WalletTransaction) err
 	defer cancel()
 
 	return m.DB.QueryRowContext(ctx, query, args...).Scan(&walletTransaction.Id)
+}
+
+func (m WalletTransactionModel) GetLatestTransaction() (*WalletTransaction, error) {
+	query := `
+        SELECT id, created_at, title, category, account, 
+               amount, currency, transactionType, transferamount,
+               transfercurrency, toaccount, receiveamount, receivecurrency,
+               description, duedate, walletid
+        FROM wallettransaction
+        ORDER BY created_at DESC
+        LIMIT 1`
+
+	var walletTransaction WalletTransaction
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query).Scan(
+		&walletTransaction.Id,
+		&walletTransaction.CreatedAt,
+		&walletTransaction.Title,
+		&walletTransaction.Category,
+		&walletTransaction.Account,
+		&walletTransaction.Amount,
+		&walletTransaction.Currency,
+		&walletTransaction.TransactionType,
+		&walletTransaction.TransferAmount,
+		&walletTransaction.TransferCurrency,
+		&walletTransaction.ToAccount,
+		&walletTransaction.ReceiveAmount,
+		&walletTransaction.ReceiveCurrency,
+		&walletTransaction.Description,
+		&walletTransaction.DueDate,
+		&walletTransaction.WalletId,
+	)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &walletTransaction, nil
 }

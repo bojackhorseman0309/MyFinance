@@ -5,6 +5,7 @@ import (
 	"backend/internal/helpers"
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,7 +28,7 @@ func (app *application) processIvyWalletTransactionsHandler(w http.ResponseWrite
 	}
 	defer file.Close()
 
-	app.logger.Info(fmt.Sprintf("File name %s", header.Filename))
+	app.logger.Info(fmt.Sprintf("Loading file name %s", header.Filename))
 
 	_, err = io.Copy(&buf, file)
 	if err != nil {
@@ -35,13 +36,36 @@ func (app *application) processIvyWalletTransactionsHandler(w http.ResponseWrite
 		return
 	}
 
-	transactions, err := parseWalletExport(buf)
+	latestTransaction, err := app.models.WalletTransactions.GetLatestTransaction()
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.logger.Warn("No latest transaction could be found")
+		default:
+			app.serverErrorResponse(w, r, err)
+			return
+		}
+	}
+
+	app.logger.Info(fmt.Sprintf("Latest transaction: %v", latestTransaction))
+
+	filterTransactionsAfter := time.Time{}
+	if latestTransaction != nil {
+		filterTransactionsAfter = latestTransaction.CreatedAt
+	}
+
+	transactions, err := parseWalletExport(buf, filterTransactionsAfter)
 	if err != nil {
 		app.serverErrorResponse(w, r, err)
 		return
 	}
 
-	fmt.Println(transactions)
+	for _, transaction := range transactions {
+		err = app.models.WalletTransactions.Insert(&transaction)
+		if err != nil {
+			app.logger.Warn(fmt.Sprintf("Error inserting transaction: %s", err))
+		}
+	}
 
 	buf.Reset()
 
@@ -52,7 +76,7 @@ func (app *application) processIvyWalletTransactionsHandler(w http.ResponseWrite
 	}
 }
 
-func parseWalletExport(export bytes.Buffer) ([]data.WalletTransaction, error) {
+func parseWalletExport(export bytes.Buffer, latestDate time.Time) ([]data.WalletTransaction, error) {
 	var transactionModelList []data.WalletTransaction
 	csvReader := csv.NewReader(&export)
 	csvReader.Comma = '|'
@@ -69,6 +93,11 @@ func parseWalletExport(export bytes.Buffer) ([]data.WalletTransaction, error) {
 		createdAtParsed, err := helpers.ParseDateTime(transaction[0])
 		if err != nil {
 			return nil, err
+		}
+
+		if !latestDate.IsZero() &&
+			(createdAtParsed.Before(latestDate) || createdAtParsed.Equal(latestDate)) {
+			continue
 		}
 
 		dueDateParsed := time.Time{}

@@ -7,12 +7,14 @@ import (
 
 var (
 	ErrRecordNotFound = errors.New("record not found")
-	ErrEditConflict   = errors.New("edit conflict")
 )
 
 type Models struct {
+	WalletTransactions WalletTransactionModel
 }
 
 func NewModels(db *sql.DB) Models {
-	return Models{}
+	return Models{
+		WalletTransactions: WalletTransactionModel{DB: db},
+	}
 }

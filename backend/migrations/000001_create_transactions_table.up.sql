@@ -15,5 +15,6 @@ CREATE TABLE IF NOT EXISTS WalletTransaction
     receiveCurrency  text,
     description      text,
     dueDate          timestamp without time zone not null default now(),
-    walletId         text                        NOT NULL
+    walletId         text                        NOT NULL,
+    unique (walletId)
 );
